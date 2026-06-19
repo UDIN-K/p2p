@@ -1,0 +1,6 @@
+{
+  "name": "P2P Connect",
+  "description": "Android app for Wi-Fi Direct file transfer and P2P chatting",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
