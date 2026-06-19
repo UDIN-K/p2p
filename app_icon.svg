@@ -1,6 +1,29 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
-  <rect width="200" height="200" rx="40" fill="#2196F3"/>
-  <path d="M50 100 A50 50 0 0 1 150 100" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round"/>
-  <path d="M70 120 A30 30 0 0 1 130 120" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round"/>
-  <circle cx="100" cy="140" r="10" fill="#FFFFFF"/>
+    <defs>
+        <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#5B9CFF" />
+            <stop offset="100%" stop-color="#4F6EF7" />
+        </linearGradient>
+        <filter id="softShadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#1A2B6B" flood-opacity="0.25"/>
+        </filter>
+    </defs>
+
+    <rect width="200" height="200" rx="45" fill="url(#bgGrad)"/>
+
+    <g filter="url(#softShadow)">
+        <circle cx="62" cy="100" r="30" fill="#FFFFFF"/>
+        <rect x="53" y="85" width="18" height="30" rx="5" fill="#4F6EF7"/>
+        <rect x="58" y="109" width="8" height="2.4" rx="1.2" fill="#BFD0FF"/>
+
+        <circle cx="138" cy="100" r="30" fill="#FFFFFF"/>
+        <rect x="129" y="85" width="18" height="30" rx="5" fill="#4F6EF7"/>
+        <rect x="134" y="109" width="8" height="2.4" rx="1.2" fill="#BFD0FF"/>
+    </g>
+
+    <path d="M 93,88 Q 100,70 107,88" fill="none" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round"/>
+    <polygon points="107,88 116,86 109,96" fill="#FFFFFF"/>
+
+    <path d="M 107,112 Q 100,130 93,112" fill="none" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round"/>
+    <polygon points="93,112 84,114 91,104" fill="#FFFFFF"/>
 </svg>

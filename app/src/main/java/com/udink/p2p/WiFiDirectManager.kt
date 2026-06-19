@@ -84,10 +84,24 @@ class WiFiDirectManager(
 
     @SuppressLint("MissingPermission")
     fun discoverPeers(onFailure: (String) -> Unit = {}) {
-        manager.discoverPeers(channel, object : WifiP2pManager.ActionListener {
-            override fun onSuccess() {}
+        _peers.value = emptyList() // Clear peers
+        manager.stopPeerDiscovery(channel, object : WifiP2pManager.ActionListener {
+            override fun onSuccess() {
+                manager.discoverPeers(channel, object : WifiP2pManager.ActionListener {
+                    override fun onSuccess() {}
+                    override fun onFailure(reasonCode: Int) {
+                        onFailure("Discovery failed. Code: $reasonCode")
+                    }
+                })
+            }
             override fun onFailure(reasonCode: Int) {
-                onFailure("Discovery failed. Code: $reasonCode")
+                // If stopping fails, we still try to discover
+                manager.discoverPeers(channel, object : WifiP2pManager.ActionListener {
+                    override fun onSuccess() {}
+                    override fun onFailure(reason: Int) {
+                        onFailure("Discovery failed. Code: $reason")
+                    }
+                })
             }
         })
     }

@@ -140,6 +140,7 @@ class MyBluetoothManager(private val context: Context, private val transferEvent
             onError("Permissions not granted or Bluetooth not supported")
             return
         }
+        _peers.value = bluetoothAdapter.bondedDevices?.toList() ?: emptyList()
         if (bluetoothAdapter.isDiscovering) {
             bluetoothAdapter.cancelDiscovery()
         }
