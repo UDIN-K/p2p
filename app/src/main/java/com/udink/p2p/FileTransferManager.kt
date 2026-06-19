@@ -79,7 +79,7 @@ class FileTransferManager(private val context: Context) {
                     
                     _transferEvents.emit(TransferEvent.ReceivingStarted)
                     
-                    copyStream(dataInputStream, fos, totalSize, filename, false)
+                    FileTransferHelper.copyStream(dataInputStream, fos, totalSize, filename, false, _transferEvents)
                     fos.close()
                     
                     _transferEvents.emit(TransferEvent.FileReceived(file.absolutePath))
@@ -137,22 +137,22 @@ class FileTransferManager(private val context: Context) {
                 val dataOutputStream = DataOutputStream(socket.getOutputStream())
                 dataOutputStream.writeUTF("FILE")
                 
-                val filename = getFileName(uri)
+                val filename = FileTransferHelper.getFileName(context, uri)
                 dataOutputStream.writeUTF(filename)
                 
-                val totalSize = getFileSize(uri)
+                val totalSize = FileTransferHelper.getFileSize(context, uri)
                 dataOutputStream.writeLong(totalSize)
                 
                 val inputStream = context.contentResolver.openInputStream(uri)
                 
-                _transferEvents.emit(TransferEvent.SendingStarted)
+                _transferEvents.emit(TransferEvent.SendingStarted(filename))
                 
                 if (inputStream != null) {
-                    copyStream(inputStream, dataOutputStream, totalSize, filename, true)
+                    FileTransferHelper.copyStream(inputStream, dataOutputStream, totalSize, filename, true, _transferEvents)
                     inputStream.close()
                 }
                 
-                _transferEvents.emit(TransferEvent.FileSent)
+                _transferEvents.emit(TransferEvent.FileSent(filename))
             } catch (e: Exception) {
                 _transferEvents.emit(TransferEvent.Error("Send error: ${e.message}"))
             } finally {
@@ -160,101 +160,14 @@ class FileTransferManager(private val context: Context) {
             }
         }
     }
-
-    @SuppressLint("Range")
-    private fun getFileName(uri: Uri): String {
-        var result: String? = null
-        if (uri.scheme == "content") {
-            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    result = cursor.getString(cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME))
-                }
-            }
-        }
-        if (result == null) {
-            result = uri.path
-            val cut = result?.lastIndexOf('/') ?: -1
-            if (cut != -1) {
-                result = result?.substring(cut + 1)
-            }
-        }
-        return result ?: "Received_${System.currentTimeMillis()}"
-    }
-
-    @SuppressLint("Range")
-    private fun getFileSize(uri: Uri): Long {
-        var result: Long = -1
-        if (uri.scheme == "content") {
-            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
-                    if (sizeIndex != -1) {
-                        if (!cursor.isNull(sizeIndex)) {
-                            result = cursor.getLong(sizeIndex)
-                        }
-                    }
-                }
-            }
-        }
-        if (result == -1L) {
-            try {
-                context.contentResolver.openFileDescriptor(uri, "r")?.use {
-                    result = it.statSize
-                }
-            } catch (e: Exception) {
-                // Ignore
-            }
-        }
-        return if (result <= 0L) 0L else result // 0 means unknown length
-    }
-
-    private suspend fun copyStream(input: InputStream, output: OutputStream, totalSize: Long, filename: String, isSending: Boolean) {
-        val buffer = ByteArray(1024 * 8)
-        var bytesRead: Int
-        var totalRead = 0L
-        var lastProgressEmit = 0L
-        var lastBytesRead = 0L
-        var lastTimeForSpeed = System.currentTimeMillis()
-        var currentSpeed = 0L // bytes per sec
-        var etaSeconds = 0L
-        
-        while (input.read(buffer).also { bytesRead = it } != -1) {
-            output.write(buffer, 0, bytesRead)
-            totalRead += bytesRead
-            if (totalSize > 0) {
-                val currentTime = System.currentTimeMillis()
-                if (currentTime - lastProgressEmit > 200) { 
-                    lastProgressEmit = currentTime
-                    val timeDiff = currentTime - lastTimeForSpeed
-                    if (timeDiff >= 1000) { // update speed every second approximately, or smooth it. 
-                        currentSpeed = ((totalRead - lastBytesRead) * 1000) / timeDiff
-                        if (currentSpeed > 0) {
-                            etaSeconds = (totalSize - totalRead) / currentSpeed
-                        }
-                        lastBytesRead = totalRead
-                        lastTimeForSpeed = currentTime
-                    } else if (currentSpeed == 0L && timeDiff > 0) {
-                        currentSpeed = ((totalRead - lastBytesRead) * 1000) / timeDiff
-                        if (currentSpeed > 0) {
-                            etaSeconds = (totalSize - totalRead) / currentSpeed
-                        }
-                    }
-                    _transferEvents.emit(TransferEvent.Progress(isSending, filename, (totalRead.toFloat() / totalSize.toFloat()).coerceIn(0f, 1f), currentSpeed, etaSeconds))
-                }
-            }
-        }
-        // Emit 100% when done
-        _transferEvents.emit(TransferEvent.Progress(isSending, filename, 1f, 0L, 0L))
-        output.flush()
-    }
 }
 
 sealed class TransferEvent {
     object ServerStarted : TransferEvent()
     object ReceivingStarted : TransferEvent()
     data class FileReceived(val path: String) : TransferEvent()
-    object SendingStarted : TransferEvent()
-    object FileSent : TransferEvent()
+    data class SendingStarted(val filename: String) : TransferEvent()
+    data class FileSent(val filename: String) : TransferEvent()
     data class Progress(val isSending: Boolean, val filename: String, val progress: Float, val speedBytesPerSec: Long = 0L, val etaSeconds: Long = 0L) : TransferEvent()
     data class ChatReceived(val senderIp: String, val message: String) : TransferEvent()
     data class Error(val message: String) : TransferEvent()

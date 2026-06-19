@@ -60,6 +60,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var channel: WifiP2pManager.Channel
     private lateinit var wifiDirectManager: WiFiDirectManager
     private lateinit var fileTransferManager: FileTransferManager
+    private lateinit var myBluetoothManager: MyBluetoothManager
+    private val btTransferEvents = kotlinx.coroutines.flow.MutableSharedFlow<TransferEvent>(extraBufferCapacity = 10)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -69,6 +71,7 @@ class MainActivity : ComponentActivity() {
         channel = wifiP2pManager.initialize(this, mainLooper, null)
         wifiDirectManager = WiFiDirectManager(this, wifiP2pManager, channel)
         fileTransferManager = FileTransferManager(this)
+        myBluetoothManager = MyBluetoothManager(this, btTransferEvents)
 
         setContent {
             MyApplicationTheme {
@@ -76,7 +79,9 @@ class MainActivity : ComponentActivity() {
                     AppNavigation(
                         modifier = Modifier.padding(innerPadding),
                         wifiDirectManager = wifiDirectManager,
-                        fileTransferManager = fileTransferManager
+                        fileTransferManager = fileTransferManager,
+                        bluetoothManager = myBluetoothManager,
+                        btTransferEvents = btTransferEvents
                     )
                 }
             }
@@ -86,13 +91,24 @@ class MainActivity : ComponentActivity() {
             fileTransferManager.transferEvents.collect { event ->
                 val message = when (event) {
                     is TransferEvent.Error -> event.message
-                    is TransferEvent.FileReceived -> "File saved to ${event.path}"
-                    is TransferEvent.FileSent -> "File sent successfully"
-                    is TransferEvent.ReceivingStarted -> "Receiving file..."
-                    is TransferEvent.SendingStarted -> "Sending file..."
-                    is TransferEvent.ServerStarted -> "Server listening for transfers"
-                    is TransferEvent.ChatReceived -> null
-                    is TransferEvent.Progress -> null
+                    is TransferEvent.FileReceived -> "File saved: ${event.path}"
+                    is TransferEvent.FileSent -> "File sent successfully: ${event.filename}"
+                    // ... other events can stay silent in global toast to avoid spam
+                    else -> null
+                }
+                if (message != null) {
+                    Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        
+        lifecycleScope.launch {
+            btTransferEvents.collect { event ->
+                val message = when (event) {
+                    is TransferEvent.Error -> "BT Error: ${event.message}"
+                    is TransferEvent.FileReceived -> "BT File saved: ${event.path}"
+                    is TransferEvent.FileSent -> "BT File sent successfully: ${event.filename}"
+                    else -> null
                 }
                 if (message != null) {
                     Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
@@ -104,11 +120,13 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         registerReceiver(wifiDirectManager.receiver, wifiDirectManager.intentFilter)
+        myBluetoothManager.registerReceiver()
     }
 
     override fun onPause() {
         super.onPause()
         unregisterReceiver(wifiDirectManager.receiver)
+        myBluetoothManager.unregisterReceiver()
     }
 }
 
@@ -116,7 +134,9 @@ class MainActivity : ComponentActivity() {
 fun AppNavigation(
     modifier: Modifier = Modifier,
     wifiDirectManager: WiFiDirectManager,
-    fileTransferManager: FileTransferManager
+    fileTransferManager: FileTransferManager,
+    bluetoothManager: MyBluetoothManager,
+    btTransferEvents: kotlinx.coroutines.flow.SharedFlow<TransferEvent>
 ) {
     val navController = rememberNavController()
     val peers by wifiDirectManager.peers.collectAsState()
@@ -127,39 +147,73 @@ fun AppNavigation(
         fileTransferManager.transferEvents.collect { event ->
             if (event is TransferEvent.FileReceived) {
                 val filename = java.io.File(event.path).name
-                recentTransfers.add(0, filename)
+                recentTransfers.add(0, "Received (WiFi): $filename")
             } else if (event is TransferEvent.FileSent) {
-                recentTransfers.add(0, "Sent File")
+                recentTransfers.add(0, "Sent (WiFi): ${event.filename}")
+            }
+        }
+    }
+    
+    LaunchedEffect(Unit) {
+        btTransferEvents.collect { event ->
+            if (event is TransferEvent.FileReceived) {
+                val filename = java.io.File(event.path).name
+                recentTransfers.add(0, "Received (BT): $filename")
+            } else if (event is TransferEvent.FileSent) {
+                recentTransfers.add(0, "Sent (BT): ${event.filename}")
             }
         }
     }
 
     NavHost(navController = navController, startDestination = "home", modifier = modifier) {
         composable("home") {
+            var selectedProtocol by remember { mutableStateOf("wifi") } // "wifi" or "bluetooth"
             HomeScreen(
                 peers = peers,
                 recentTransfers = recentTransfers,
                 isWifiDirectEnabled = isWifiDirectEnabled,
-                onNavigateToTransfer = { navController.navigate("transfer") },
-                onNavigateToChat = { navController.navigate("chat") },
+                selectedProtocol = selectedProtocol,
+                onProtocolSelected = { selectedProtocol = it },
+                onNavigateToTransfer = { navController.navigate("transfer/$selectedProtocol") },
+                onNavigateToChat = { navController.navigate("chat/$selectedProtocol") },
                 onNavigateToAbout = { navController.navigate("about") }
             )
         }
-        composable("transfer") {
-           WiFiDirectApp(
-                mode = "transfer",
-                wifiDirectManager = wifiDirectManager,
-                fileTransferManager = fileTransferManager,
-                onBack = { navController.popBackStack() }
-            )
+        composable("transfer/{protocol}") { backStackEntry ->
+           val protocol = backStackEntry.arguments?.getString("protocol") ?: "wifi"
+           if (protocol == "wifi") {
+               WiFiDirectApp(
+                    mode = "transfer",
+                    wifiDirectManager = wifiDirectManager,
+                    fileTransferManager = fileTransferManager,
+                    onBack = { navController.popBackStack() }
+                )
+           } else {
+               BluetoothApp(
+                    mode = "transfer",
+                    bluetoothManager = bluetoothManager,
+                    transferEvents = btTransferEvents,
+                    onBack = { navController.popBackStack() }
+                )
+           }
         }
-        composable("chat") {
-           WiFiDirectApp(
-                mode = "chat",
-                wifiDirectManager = wifiDirectManager,
-                fileTransferManager = fileTransferManager,
-                onBack = { navController.popBackStack() }
-            )
+        composable("chat/{protocol}") { backStackEntry ->
+           val protocol = backStackEntry.arguments?.getString("protocol") ?: "wifi"
+           if (protocol == "wifi") {
+               WiFiDirectApp(
+                    mode = "chat",
+                    wifiDirectManager = wifiDirectManager,
+                    fileTransferManager = fileTransferManager,
+                    onBack = { navController.popBackStack() }
+                )
+           } else {
+               BluetoothApp(
+                    mode = "chat",
+                    bluetoothManager = bluetoothManager,
+                    transferEvents = btTransferEvents,
+                    onBack = { navController.popBackStack() }
+                )
+           }
         }
         composable("about") {
             AboutScreen(onBack = { navController.popBackStack() })
@@ -173,6 +227,8 @@ fun HomeScreen(
     peers: List<android.net.wifi.p2p.WifiP2pDevice>,
     recentTransfers: List<String>,
     isWifiDirectEnabled: Boolean,
+    selectedProtocol: String,
+    onProtocolSelected: (String) -> Unit,
     onNavigateToTransfer: () -> Unit,
     onNavigateToChat: () -> Unit,
     onNavigateToAbout: () -> Unit
@@ -223,6 +279,30 @@ fun HomeScreen(
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             item { Spacer(modifier = Modifier.height(8.dp)) }
+
+            // Protocol Selection
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(48.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(24.dp)),
+                ) {
+                    Box(
+                        modifier = Modifier.weight(1f).fillMaxHeight()
+                            .background(if (selectedProtocol == "wifi") MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(24.dp))
+                            .clickable { onProtocolSelected("wifi") },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Wi-Fi Direct", color = if (selectedProtocol == "wifi") MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+                    }
+                    Box(
+                        modifier = Modifier.weight(1f).fillMaxHeight()
+                            .background(if (selectedProtocol == "bluetooth") MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(24.dp))
+                            .clickable { onProtocolSelected("bluetooth") },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Bluetooth", color = if (selectedProtocol == "bluetooth") MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
             
             // Status Card
             item {
@@ -684,6 +764,21 @@ fun WiFiDirectApp(
     
     var showMyQR by remember { mutableStateOf(false) }
     val thisDevice by wifiDirectManager.thisDevice.collectAsState()
+    var pendingConnectMac by remember { mutableStateOf<String?>(null) }
+    
+    LaunchedEffect(peers, pendingConnectMac) {
+        if (pendingConnectMac != null) {
+            val peer = peers.find { it.deviceAddress == pendingConnectMac }
+            if (peer != null) {
+                Toast.makeText(context, "Device discovered! Connecting...", Toast.LENGTH_SHORT).show()
+                wifiDirectManager.connect(peer) { error ->
+                    Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
+                }
+                pendingConnectMac = null
+            }
+        }
+    }
+
     val scanLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = com.journeyapps.barcodescanner.ScanContract(),
         onResult = { result ->
@@ -695,11 +790,11 @@ fun WiFiDirectApp(
                         Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
                     }
                 } else {
-                    // Try direct configuration if not pre-discovered
-                    Toast.makeText(context, "Device not explicitly discovered, attempting direct connection...", Toast.LENGTH_SHORT).show()
-                    val dummyDevice = android.net.wifi.p2p.WifiP2pDevice().apply { deviceAddress = scannedMac }
-                    wifiDirectManager.connect(dummyDevice) { error ->
+                    Toast.makeText(context, "Device not discovered yet, searching...", Toast.LENGTH_SHORT).show()
+                    pendingConnectMac = scannedMac
+                    wifiDirectManager.discoverPeers { error ->
                         Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
+                        pendingConnectMac = null
                     }
                 }
             }
