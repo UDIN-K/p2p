@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -118,10 +119,27 @@ fun AppNavigation(
     fileTransferManager: FileTransferManager
 ) {
     val navController = rememberNavController()
+    val peers by wifiDirectManager.peers.collectAsState()
+    val isWifiDirectEnabled by wifiDirectManager.isWifiP2pEnabled.collectAsState()
+    val recentTransfers = remember { mutableStateListOf<String>() }
+
+    LaunchedEffect(Unit) {
+        fileTransferManager.transferEvents.collect { event ->
+            if (event is TransferEvent.FileReceived) {
+                val filename = java.io.File(event.path).name
+                recentTransfers.add(0, filename)
+            } else if (event is TransferEvent.FileSent) {
+                recentTransfers.add(0, "Sent File")
+            }
+        }
+    }
 
     NavHost(navController = navController, startDestination = "home", modifier = modifier) {
         composable("home") {
             HomeScreen(
+                peers = peers,
+                recentTransfers = recentTransfers,
+                isWifiDirectEnabled = isWifiDirectEnabled,
                 onNavigateToTransfer = { navController.navigate("transfer") },
                 onNavigateToChat = { navController.navigate("chat") },
                 onNavigateToAbout = { navController.navigate("about") }
@@ -151,7 +169,14 @@ fun AppNavigation(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(onNavigateToTransfer: () -> Unit, onNavigateToChat: () -> Unit, onNavigateToAbout: () -> Unit) {
+fun HomeScreen(
+    peers: List<android.net.wifi.p2p.WifiP2pDevice>,
+    recentTransfers: List<String>,
+    isWifiDirectEnabled: Boolean,
+    onNavigateToTransfer: () -> Unit,
+    onNavigateToChat: () -> Unit,
+    onNavigateToAbout: () -> Unit
+) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -217,19 +242,23 @@ fun HomeScreen(onNavigateToTransfer: () -> Unit, onNavigateToChat: () -> Unit, o
                         Column {
                             Text("Current Status", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text("WiFi Direct: ON", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text(if (isWifiDirectEnabled) "WiFi Direct: ON" else "WiFi Direct: OFF", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         }
                         // Circular Progress representing ON
                         Box(contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(
-                                progress = { 1f },
+                                progress = { if (isWifiDirectEnabled) 1f else 0f },
                                 modifier = Modifier.size(64.dp),
-                                color = MaterialTheme.colorScheme.primary,
+                                color = if (isWifiDirectEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                                 strokeWidth = 6.dp,
                                 trackColor = MaterialTheme.colorScheme.primaryContainer,
                                 strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
                             )
-                            Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            if (isWifiDirectEnabled) {
+                                Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            } else {
+                                Icon(Icons.Default.Close, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                            }
                         }
                     }
                 }
@@ -301,25 +330,30 @@ fun HomeScreen(onNavigateToTransfer: () -> Unit, onNavigateToChat: () -> Unit, o
                 }
             }
             
-            // Nearby Devices placeholder
+            // Nearby Devices
             item {
                 Text("Nearby Devices", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(12.dp))
-                androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    items(5) { index ->
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Box(
-                                modifier = Modifier
-                                    .size(64.dp)
-                                    .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
-                                    .padding(4.dp)
-                                    .background(MaterialTheme.colorScheme.surface, CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                if (peers.isEmpty()) {
+                    Text("No devices found.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        items(peers.size) { index ->
+                            val peer = peers[index]
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(64.dp)
+                                        .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                                        .padding(4.dp)
+                                        .background(MaterialTheme.colorScheme.surface, CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(peer.deviceName ?: "Unknown", style = MaterialTheme.typography.bodySmall)
                             }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text("Device $index", style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
@@ -329,38 +363,43 @@ fun HomeScreen(onNavigateToTransfer: () -> Unit, onNavigateToChat: () -> Unit, o
             item {
                 Text("Recent Transfers", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(12.dp))
-                repeat(3) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 12.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Row(
+                if (recentTransfers.isEmpty()) {
+                    Text("No recent transfers.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(modifier = Modifier.height(80.dp)) // padding for FAB
+                } else {
+                    recentTransfers.forEach { transferName ->
+                        Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(bottom = 12.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            shape = RoundedCornerShape(16.dp)
                         ) {
-                            Box(
+                            Row(
                                 modifier = Modifier
-                                    .size(40.dp)
-                                    .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(12.dp)),
-                                contentAlignment = Alignment.Center
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(androidx.compose.material.icons.Icons.Default.Description, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(12.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(androidx.compose.material.icons.Icons.Default.Description, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                }
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(transferName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                    Text("Success", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = androidx.compose.ui.graphics.Color(0xFF4CAF50))
                             }
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Shared File.jpg", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                                Text("2.4 MB", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = androidx.compose.ui.graphics.Color(0xFF4CAF50))
                         }
                     }
+                    Spacer(modifier = Modifier.height(80.dp)) // padding for FAB
                 }
-                Spacer(modifier = Modifier.height(80.dp)) // padding for FAB
             }
         }
     }
@@ -538,7 +577,9 @@ data class TransferState(
     val isActive: Boolean = false,
     val isSending: Boolean = false,
     val filename: String = "",
-    val progress: Float = 0f
+    val progress: Float = 0f,
+    val speedBytesPerSec: Long = 0L,
+    val etaSeconds: Long = 0L
 )
 
 @OptIn(ExperimentalPermissionsApi::class, ExperimentalMaterial3Api::class)
@@ -562,12 +603,18 @@ fun WiFiDirectApp(
         fileTransferManager.transferEvents.collect { event ->
             if (event is TransferEvent.ChatReceived) {
                 chatMessages.add(Pair("Peer", event.message))
+            } else if (event is TransferEvent.ReceivingStarted) {
+                transferState = TransferState(isActive = true, isSending = false, filename = "Incoming File...", progress = 0f, speedBytesPerSec = 0L, etaSeconds = 0L)
+            } else if (event is TransferEvent.SendingStarted) {
+                transferState = TransferState(isActive = true, isSending = true, filename = "Outgoing File...", progress = 0f, speedBytesPerSec = 0L, etaSeconds = 0L)
             } else if (event is TransferEvent.Progress) {
                 transferState = TransferState(
                     isActive = true,
                     isSending = event.isSending,
                     filename = event.filename,
-                    progress = event.progress
+                    progress = event.progress,
+                    speedBytesPerSec = event.speedBytesPerSec,
+                    etaSeconds = event.etaSeconds
                 )
                 if (event.progress >= 1f) {
                     kotlinx.coroutines.delay(2000)
@@ -1012,14 +1059,21 @@ fun WiFiDirectApp(
                     }
                     Spacer(modifier = Modifier.height(24.dp))
                     Text(
-                        text = if (transferState.isActive) "Sending..." else "Connected",
+                        text = if (transferState.isActive) (if (transferState.isSending) "Sending..." else "Receiving...") else "Connected",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "To peer device",
+                        text = if (transferState.isActive) transferState.filename else "To peer device",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "${(transferState.progress * 100).toInt()}%",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 8.dp)
                     )
                     
                     Spacer(modifier = Modifier.height(48.dp))
@@ -1029,7 +1083,11 @@ fun WiFiDirectApp(
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("Speed", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(if (transferState.isActive) "Fast" else "-", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(if (transferState.isActive) formatSpeed(transferState.speedBytesPerSec) else "-", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("ETA", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(if (transferState.isActive) formatEta(transferState.etaSeconds) else "-", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -1109,6 +1167,28 @@ fun generateQRCode(content: String): android.graphics.Bitmap? {
         return bitmap
     } catch (e: Exception) {
         return null
+    }
+}
+
+fun formatSpeed(bytesPerSec: Long): String {
+    if (bytesPerSec == 0L) return "---"
+    val kb = bytesPerSec / 1024.0
+    val mb = kb / 1024.0
+    return if (mb >= 1.0) {
+        String.format("%.1f MB/s", mb)
+    } else {
+        String.format("%.1f KB/s", kb)
+    }
+}
+
+fun formatEta(seconds: Long): String {
+    if (seconds == 0L) return "---"
+    val mins = seconds / 60
+    val secs = seconds % 60
+    return if (mins > 0) {
+        "${mins}m ${secs}s"
+    } else {
+        "${secs}s"
     }
 }
 

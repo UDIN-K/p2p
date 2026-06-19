@@ -213,19 +213,38 @@ class FileTransferManager(private val context: Context) {
         var bytesRead: Int
         var totalRead = 0L
         var lastProgressEmit = 0L
+        var lastBytesRead = 0L
+        var lastTimeForSpeed = System.currentTimeMillis()
+        var currentSpeed = 0L // bytes per sec
+        var etaSeconds = 0L
+        
         while (input.read(buffer).also { bytesRead = it } != -1) {
             output.write(buffer, 0, bytesRead)
             totalRead += bytesRead
             if (totalSize > 0) {
                 val currentTime = System.currentTimeMillis()
-                if (currentTime - lastProgressEmit > 100) { 
+                if (currentTime - lastProgressEmit > 200) { 
                     lastProgressEmit = currentTime
-                    _transferEvents.emit(TransferEvent.Progress(isSending, filename, (totalRead.toFloat() / totalSize.toFloat()).coerceIn(0f, 1f)))
+                    val timeDiff = currentTime - lastTimeForSpeed
+                    if (timeDiff >= 1000) { // update speed every second approximately, or smooth it. 
+                        currentSpeed = ((totalRead - lastBytesRead) * 1000) / timeDiff
+                        if (currentSpeed > 0) {
+                            etaSeconds = (totalSize - totalRead) / currentSpeed
+                        }
+                        lastBytesRead = totalRead
+                        lastTimeForSpeed = currentTime
+                    } else if (currentSpeed == 0L && timeDiff > 0) {
+                        currentSpeed = ((totalRead - lastBytesRead) * 1000) / timeDiff
+                        if (currentSpeed > 0) {
+                            etaSeconds = (totalSize - totalRead) / currentSpeed
+                        }
+                    }
+                    _transferEvents.emit(TransferEvent.Progress(isSending, filename, (totalRead.toFloat() / totalSize.toFloat()).coerceIn(0f, 1f), currentSpeed, etaSeconds))
                 }
             }
         }
         // Emit 100% when done
-        _transferEvents.emit(TransferEvent.Progress(isSending, filename, 1f))
+        _transferEvents.emit(TransferEvent.Progress(isSending, filename, 1f, 0L, 0L))
         output.flush()
     }
 }
@@ -236,7 +255,7 @@ sealed class TransferEvent {
     data class FileReceived(val path: String) : TransferEvent()
     object SendingStarted : TransferEvent()
     object FileSent : TransferEvent()
-    data class Progress(val isSending: Boolean, val filename: String, val progress: Float) : TransferEvent()
+    data class Progress(val isSending: Boolean, val filename: String, val progress: Float, val speedBytesPerSec: Long = 0L, val etaSeconds: Long = 0L) : TransferEvent()
     data class ChatReceived(val senderIp: String, val message: String) : TransferEvent()
     data class Error(val message: String) : TransferEvent()
 }
