@@ -8,24 +8,28 @@ An open-source Android application for seamless over-the-air peer-to-peer file s
 
 ## Features ✨
 
-- **Wi-Fi Direct Sharing**: Send and receive files locally at blazing-fast speeds without the need for an active internet connection.
-- **Bluetooth Sharing**: Fallback connection for sharing files directly to paired devices using standard Bluetooth.
-- **App Sharing**: Easily share installed apps directly from your phone to a connected peer.
-- **Local Chatting**: Send and receive text messages securely on local network protocols.
-- **Modern UI**: Full Material 3 design complete with dynamic colors, animations, dark mode, and elegant progress indicators.
-- **Fast & Lightweight**: Built efficiently without any cloud synchronization dependencies, fully respects user privacy.
+- **Wi-Fi Direct & Bluetooth**: Dual-protocol support! Send files at blazing-fast speeds via Wi-Fi Direct, or use Bluetooth for legacy device fallback.
+- **P2P Text Chatting**: Send and receive text messages securely over local P2P connections (no internet required).
+- **File & App Sharing**: Share documents, media, and even installed applications directly from your phone to a connected peer.
+- **Modern UI**: Full Material 3 design complete with dynamic colors, smooth animations, dark mode, and elegant progress indicators.
+- **Lifecycle Aware**: Ensures minimal battery drainage by automatically pausing and stopping network discovery when the app is backgrounded.
+- **Privacy First**: Fully offline architecture. No cloud synchronization, no hidden accounts, and no data collection. 
 
-## Screenshots 📸
+## Developers / Contributors 💻
 
-The app uses standard UI components from Material 3 to provide consistent and aesthetically pleasing interactive flows. File transfers showcase real-time progress indicators, speeds, and ETAs.
+This project was built and is maintained by:
+- **[UDIN-K](https://github.com/UDIN-K/)**
+- **[Duwiii-0](https://github.com/Duwiii-0)**
+- **[Blip (Muhammad Irzaldi)](https://github.com/muhammadirzaldialamsyahtik24-blip)**
 
 ## Building and Running 🛠
 
 To build and run this Android project from the source code, follow these steps:
+  
 1. Clone or download the repository.
 2. Open the project in [Android Studio](https://developer.android.com/studio).
 3. Wait for Gradle to fully sync the project dependencies.
-4. Run the app on an emulator or a physical device connected via USB or Wi-Fi debugging (Physical device required to fully test Wi-Fi Direct and Bluetooth).
+4. Run the app on a physical device. **Note:** An actual Android device with Wi-Fi and Bluetooth capabilities is required to fully test Wi-Fi Direct and Bluetooth connections (emulators do not fully support P2P simulation).
 
 ```bash
 # Run tests locally
@@ -35,9 +39,14 @@ To build and run this Android project from the source code, follow these steps:
 ./gradlew assembleDebug
 ```
 
-## Setup Permissions ✅
+## Permissions ✅
 
-Make sure your physical device has Location Services turned on (a requirement by Android OS for Wi-Fi Direct discovery) and Bluetooth capabilities enabled to fully test peer discovery and connections.
+The following permissions are required for the app to function correctly:
+- **Location**: Required by the Android OS for Wi-Fi Direct and Bluetooth discovery.
+- **Storage/Media**: Required for reading and writing files during transfers.
+- **Bluetooth/Wi-Fi**: Required for device pairing and data transmission.
+
+Make sure your physical device has Location Services and Bluetooth turned on before initiating a connection search.
 
 ## License 📄
 

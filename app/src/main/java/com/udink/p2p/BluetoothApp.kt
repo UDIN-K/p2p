@@ -352,8 +352,10 @@ fun BluetoothApp(
                             onClick = { 
                                 connectingAddress = peer.address
                                 bluetoothManager.connect(peer) { err -> 
-                                    connectingAddress = null
-                                    Toast.makeText(context, err, Toast.LENGTH_SHORT).show() 
+                                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                                        connectingAddress = null
+                                        Toast.makeText(context, err, Toast.LENGTH_SHORT).show() 
+                                    }
                                 }
                             }
                         ) {

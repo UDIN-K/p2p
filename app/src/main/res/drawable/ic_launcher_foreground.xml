@@ -5,14 +5,30 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     <group
-        android:translateX="42"
-        android:translateY="42"
-        android:scaleX="2.5"
-        android:scaleY="2.5"
-        android:pivotX="12"
-        android:pivotY="12">
+        android:translateX="26"
+        android:translateY="26"
+        android:scaleX="2.3"
+        android:scaleY="2.3">
+        <!-- Stylish P shape -->
         <path
             android:fillColor="#FFFFFF"
-            android:pathData="M1,9l2,2c4.97,-4.97 13.03,-4.97 18,0l2,-2C16.93,2.93 7.08,2.93 1,9zM9,17l3,3l3,-3C13.34,15.34 10.66,15.34 9,17zM5,13l2,2c2.76,-2.76 7.24,-2.76 10,0l2,-2C15.14,9.14 8.87,9.14 5,13z"/>
+            android:pathData="M 6,3.5 C 6,2.67 6.67,2 7.5,2 H 14 C 18.14,2 21.5,5.36 21.5,9.5 C 21.5,13.64 18.14,17 14,17 H 9 V 20.5 C 9,21.33 8.33,22 7.5,22 C 6.67,22 6,21.33 6,20.5 V 3.5 Z M 9,5 V 14 H 14 C 16.48,14 18.5,11.98 18.5,9.5 C 18.5,7.02 16.48,5 14,5 H 9 Z" />
+        
+        <!-- Inner node dot to represent p2p connection -->
+        <path
+            android:fillColor="#5B9CFF"
+            android:pathData="M 12.5,9.5 m -2.5,0 a 2.5,2.5 0 1,1 5,0 a 2.5,2.5 0 1,1 -5,0" />
+            
+        <!-- Connection signal arcs -->
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="1.5"
+            android:strokeLineCap="round"
+            android:pathData="M 23, 6.5 A 4,4 0 0,1 23, 12.5" />
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="1.5"
+            android:strokeLineCap="round"
+            android:pathData="M 26, 4 A 7.5,7.5 0 0,1 26, 15" />
     </group>
 </vector>

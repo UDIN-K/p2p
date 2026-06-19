@@ -19,9 +19,17 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.draw.scale
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -117,15 +125,28 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private var isWifiReceiverRegistered = false
+
     override fun onResume() {
         super.onResume()
-        registerReceiver(wifiDirectManager.receiver, wifiDirectManager.intentFilter)
+        if (!isWifiReceiverRegistered) {
+            try {
+                registerReceiver(wifiDirectManager.receiver, wifiDirectManager.intentFilter)
+                isWifiReceiverRegistered = true
+            } catch (e: Exception) {}
+        }
         myBluetoothManager.registerReceiver()
     }
 
     override fun onPause() {
         super.onPause()
-        unregisterReceiver(wifiDirectManager.receiver)
+        if (isWifiReceiverRegistered) {
+            try {
+                unregisterReceiver(wifiDirectManager.receiver)
+                isWifiReceiverRegistered = false
+            } catch (e: Exception) {}
+        }
+        try { wifiDirectManager.stopDiscovery() } catch (e: Exception) {}
         myBluetoothManager.unregisterReceiver()
     }
 }
@@ -233,6 +254,31 @@ fun HomeScreen(
     onNavigateToChat: () -> Unit,
     onNavigateToAbout: () -> Unit
 ) {
+    var showExitDialog by remember { mutableStateOf(false) }
+    val activity = (LocalContext.current as? android.app.Activity)
+
+    androidx.activity.compose.BackHandler(enabled = true) {
+        showExitDialog = true
+    }
+
+    if (showExitDialog) {
+        AlertDialog(
+            onDismissRequest = { showExitDialog = false },
+            title = { Text("Exit App") },
+            text = { Text("Are you sure you want to exit P2P Connect?") },
+            confirmButton = {
+                TextButton(onClick = { activity?.finish() }) {
+                    Text("Exit")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -550,6 +596,7 @@ fun AboutScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -563,11 +610,10 @@ fun AboutScreen(onBack: () -> Unit) {
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(56.dp)
+                Image(
+                    painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                    contentDescription = "App Icon",
+                    modifier = Modifier.size(72.dp)
                 )
             }
             Spacer(modifier = Modifier.height(16.dp))
@@ -583,9 +629,17 @@ fun AboutScreen(onBack: () -> Unit) {
             )
             Spacer(modifier = Modifier.height(32.dp))
             
+            Text(
+                "App Topics: p2p, android, wifi-direct, bluetooth-chat, file-sharing",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            
             DeveloperCard(
                 name = "UDIN-K",
                 githubUrl = "https://github.com/UDIN-K/",
+                topic = "Android Developer",
                 onClick = {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/UDIN-K/"))
                     context.startActivity(intent)
@@ -595,6 +649,7 @@ fun AboutScreen(onBack: () -> Unit) {
             DeveloperCard(
                 name = "Duwiii-0",
                 githubUrl = "https://github.com/Duwiii-0",
+                topic = "Android Developer",
                 onClick = {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Duwiii-0"))
                     context.startActivity(intent)
@@ -604,18 +659,29 @@ fun AboutScreen(onBack: () -> Unit) {
             DeveloperCard(
                 name = "Blip (Muhammad Irzaldi)",
                 githubUrl = "https://github.com/muhammadirzaldialamsyahtik24-blip",
+                topic = "Android Developer",
                 onClick = {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/muhammadirzaldialamsyahtik24-blip"))
                     context.startActivity(intent)
                 }
             )
+            Spacer(modifier = Modifier.height(24.dp))
+            Button(
+                onClick = {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/UDIN-K")) 
+                    context.startActivity(intent)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("View Project on GitHub")
+            }
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DeveloperCard(name: String, githubUrl: String, onClick: () -> Unit) {
+fun DeveloperCard(name: String, githubUrl: String, topic: String, onClick: () -> Unit) {
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
@@ -631,22 +697,20 @@ fun DeveloperCard(name: String, githubUrl: String, onClick: () -> Unit) {
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
+            val strippedUrl = if (githubUrl.endsWith("/")) githubUrl.dropLast(1) else githubUrl
+            coil.compose.AsyncImage(
+                model = "$strippedUrl.png",
+                contentDescription = null,
                 modifier = Modifier
                     .size(48.dp)
-                    .background(MaterialTheme.colorScheme.primary, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Person,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
+                    .clip(CircleShape),
+                contentScale = ContentScale.Crop,
+                error = painterResource(id = R.drawable.ic_launcher_foreground)
+            )
             Spacer(modifier = Modifier.width(16.dp))
             Column {
                 Text(text = name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                Text(text = topic, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(text = "GitHub Profile", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
             }
         }
@@ -1068,6 +1132,48 @@ fun WiFiDirectApp(
             }
 
             if (connectionInfo?.groupFormed != true) {
+                val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+                
+                val scale1 by infiniteTransition.animateFloat(
+                    initialValue = 0.5f,
+                    targetValue = 2f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(2000, easing = LinearOutSlowInEasing),
+                        repeatMode = RepeatMode.Restart
+                    ),
+                    label = "scale1"
+                )
+                val alpha1 by infiniteTransition.animateFloat(
+                    initialValue = 0.5f,
+                    targetValue = 0f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(2000, easing = LinearOutSlowInEasing),
+                        repeatMode = RepeatMode.Restart
+                    ),
+                    label = "alpha1"
+                )
+
+                val scale2 by infiniteTransition.animateFloat(
+                    initialValue = 0.5f,
+                    targetValue = 2f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(2000, easing = LinearOutSlowInEasing),
+                        repeatMode = RepeatMode.Restart,
+                        initialStartOffset = StartOffset(1000)
+                    ),
+                    label = "scale2"
+                )
+                val alpha2 by infiniteTransition.animateFloat(
+                    initialValue = 0.5f,
+                    targetValue = 0f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(2000, easing = LinearOutSlowInEasing),
+                        repeatMode = RepeatMode.Restart,
+                        initialStartOffset = StartOffset(1000)
+                    ),
+                    label = "alpha2"
+                )
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1076,13 +1182,15 @@ fun WiFiDirectApp(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(192.dp)
-                            .border(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f), CircleShape)
+                            .size(128.dp)
+                            .scale(scale1)
+                            .border(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = alpha1), CircleShape)
                     )
                     Box(
                         modifier = Modifier
                             .size(128.dp)
-                            .border(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f), CircleShape)
+                            .scale(scale2)
+                            .border(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = alpha2), CircleShape)
                     )
                     Button(
                         onClick = {

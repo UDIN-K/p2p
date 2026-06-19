@@ -85,20 +85,35 @@ class MyBluetoothManager(private val context: Context, private val transferEvent
         }
     }
 
+    private var isReceiverRegistered = false
+
     fun registerReceiver() {
+        if (isReceiverRegistered) return
         val filter = IntentFilter().apply {
             addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
             addAction(BluetoothDevice.ACTION_FOUND)
         }
-        context.registerReceiver(receiver, filter)
+        try {
+            context.registerReceiver(receiver, filter)
+            isReceiverRegistered = true
+        } catch (e: Exception) {}
         _isBluetoothEnabled.value = bluetoothAdapter?.isEnabled == true
         if (hasPermission()) {
             getPairedDevices()
         }
     }
 
+    @SuppressLint("MissingPermission")
     fun unregisterReceiver() {
-        context.unregisterReceiver(receiver)
+        if (isReceiverRegistered) {
+            try {
+                context.unregisterReceiver(receiver)
+                isReceiverRegistered = false
+            } catch (e: Exception) {}
+        }
+        if (hasPermission() && bluetoothAdapter?.isDiscovering == true) {
+            bluetoothAdapter.cancelDiscovery()
+        }
         stopServer()
         activeSocket?.close()
     }
@@ -210,18 +225,32 @@ class MyBluetoothManager(private val context: Context, private val transferEvent
         }
 
         override fun run() {
-            try {
-                mmSocket?.connect()
+            var attempt = 0
+            var connected = false
+            while (attempt < 3 && !connected) {
+                try {
+                    mmSocket?.connect()
+                    connected = true
+                } catch (e: Exception) {
+                    attempt++
+                    if (attempt == 3) {
+                        try {
+                            mmSocket?.close()
+                        } catch (e2: Exception) {}
+                        val msg = e.message ?: "Target device may not be ready"
+                        onError("Connection failed: $msg")
+                        return
+                    }
+                    try { Thread.sleep(1500) } catch (e3: Exception) {}
+                }
+            }
+            if (connected) {
                 mmSocket?.let { 
                     activeSocket = it
-                    _connectionStatus.value = "Connected to ${device.name ?: device.address}"
+                    val deviceName = try { device.name ?: device.address } catch (e: SecurityException) { device.address }
+                    _connectionStatus.value = "Connected to $deviceName"
                     listenClient(it)
                 }
-            } catch (e: Exception) {
-                try {
-                    mmSocket?.close()
-                } catch (e2: Exception) {}
-                onError("Could not connect: ${e.message}")
             }
         }
 

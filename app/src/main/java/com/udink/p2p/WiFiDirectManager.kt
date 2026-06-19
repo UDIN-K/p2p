@@ -93,6 +93,11 @@ class WiFiDirectManager(
     }
 
     @SuppressLint("MissingPermission")
+    fun stopDiscovery() {
+        manager.stopPeerDiscovery(channel, null)
+    }
+
+    @SuppressLint("MissingPermission")
     fun connect(device: WifiP2pDevice, onFailure: (String) -> Unit = {}) {
         val config = WifiP2pConfig().apply {
             deviceAddress = device.deviceAddress
