@@ -85,23 +85,29 @@ class WiFiDirectManager(
     @SuppressLint("MissingPermission")
     fun discoverPeers(onFailure: (String) -> Unit = {}) {
         _peers.value = emptyList() // Clear peers
-        manager.stopPeerDiscovery(channel, object : WifiP2pManager.ActionListener {
-            override fun onSuccess() {
-                manager.discoverPeers(channel, object : WifiP2pManager.ActionListener {
-                    override fun onSuccess() {}
-                    override fun onFailure(reasonCode: Int) {
-                        onFailure("Discovery failed. Code: $reasonCode")
-                    }
-                })
-            }
+        manager.discoverPeers(channel, object : WifiP2pManager.ActionListener {
+            override fun onSuccess() {}
             override fun onFailure(reasonCode: Int) {
-                // If stopping fails, we still try to discover
-                manager.discoverPeers(channel, object : WifiP2pManager.ActionListener {
-                    override fun onSuccess() {}
-                    override fun onFailure(reason: Int) {
-                        onFailure("Discovery failed. Code: $reason")
-                    }
-                })
+                if (reasonCode == WifiP2pManager.ERROR) {
+                    // Framework might be busy or already discovering, try stopping first then start after delay
+                    manager.stopPeerDiscovery(channel, object : WifiP2pManager.ActionListener {
+                        override fun onSuccess() {
+                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                manager.discoverPeers(channel, object : WifiP2pManager.ActionListener {
+                                    override fun onSuccess() {}
+                                    override fun onFailure(reason: Int) {
+                                        onFailure("Discovery failed. Code: $reason")
+                                    }
+                                })
+                            }, 500)
+                        }
+                        override fun onFailure(reason: Int) {
+                            onFailure("Discovery failed. Code: $reasonCode")
+                        }
+                    })
+                } else {
+                    onFailure("Discovery failed. Code: $reasonCode")
+                }
             }
         })
     }
