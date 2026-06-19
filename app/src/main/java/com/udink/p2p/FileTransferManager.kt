@@ -127,7 +127,7 @@ class FileTransferManager(private val context: Context) {
         }
     }
 
-    suspend fun sendFile(uri: Uri, host: String, port: Int = 8988) {
+    suspend fun sendFile(uri: Uri, host: String, port: Int = 8988, overrideFilename: String? = null) {
         withContext(Dispatchers.IO) {
             val socket = Socket()
             try {
@@ -137,13 +137,19 @@ class FileTransferManager(private val context: Context) {
                 val dataOutputStream = DataOutputStream(socket.getOutputStream())
                 dataOutputStream.writeUTF("FILE")
                 
-                val filename = FileTransferHelper.getFileName(context, uri)
+                val filename = overrideFilename ?: FileTransferHelper.getFileName(context, uri)
                 dataOutputStream.writeUTF(filename)
                 
                 val totalSize = FileTransferHelper.getFileSize(context, uri)
                 dataOutputStream.writeLong(totalSize)
                 
-                val inputStream = context.contentResolver.openInputStream(uri)
+                var inputStream = context.contentResolver.openInputStream(uri)
+                if (inputStream == null && uri.path != null) {
+                    val file = java.io.File(uri.path!!)
+                    if (file.exists()) {
+                        inputStream = java.io.FileInputStream(file)
+                    }
+                }
                 
                 _transferEvents.emit(TransferEvent.SendingStarted(filename))
                 

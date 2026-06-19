@@ -680,6 +680,10 @@ fun WiFiDirectApp(
     var transferState by remember { mutableStateOf(TransferState()) }
 
     LaunchedEffect(Unit) {
+        disconnectStandardWifi(context)
+    }
+
+    LaunchedEffect(Unit) {
         fileTransferManager.transferEvents.collect { event ->
             if (event is TransferEvent.ChatReceived) {
                 chatMessages.add(Pair("Peer", event.message))
@@ -849,6 +853,13 @@ fun WiFiDirectApp(
                         IconButton(onClick = { scanLauncher.launch(com.journeyapps.barcodescanner.ScanOptions()) }) {
                             Icon(androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_camera), contentDescription = "Scan QR")
                         }
+                    } else if (connectionInfo?.groupFormed == true) {
+                        IconButton(onClick = { 
+                            wifiDirectManager.disconnect() 
+                            Toast.makeText(context, "Disconnected", Toast.LENGTH_SHORT).show()
+                        }) {
+                            Icon(Icons.Default.Close, contentDescription = "Disconnect")
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -903,6 +914,25 @@ fun WiFiDirectApp(
                         }
                     }
                 } else {
+                    var showAppDialog by remember { mutableStateOf(false) }
+
+                    if (showAppDialog) {
+                        AppSelectionDialog(
+                            onDismissRequest = { showAppDialog = false },
+                            onAppSelected = { appInfo ->
+                                showAppDialog = false
+                                val goIp = fileTransferManager.peerIp
+                                if (goIp != null) {
+                                    (context as? ComponentActivity)?.lifecycleScope?.launch {
+                                        val uri = Uri.fromFile(java.io.File(appInfo.sourceDir))
+                                        fileTransferManager.sendFile(uri, goIp, overrideFilename = "${appInfo.name}.apk")
+                                    }
+                                } else {
+                                    Toast.makeText(context, "Wait for connection to finalize.", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        )
+                    }
                     Surface(
                         modifier = Modifier.padding(16.dp),
                         shape = androidx.compose.foundation.shape.RoundedCornerShape(32.dp),
@@ -927,7 +957,7 @@ fun WiFiDirectApp(
                                 Text("Send Files", fontWeight = FontWeight.SemiBold)
                             }
                             TextButton(
-                                onClick = { wifiDirectManager.disconnect() },
+                                onClick = { showAppDialog = true },
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(56.dp),
@@ -936,7 +966,7 @@ fun WiFiDirectApp(
                                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                                 )
                             ) {
-                                Text("Disconnect", fontWeight = FontWeight.SemiBold)
+                                Text("Send App", fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
@@ -1340,7 +1370,7 @@ fun PeerItem(peer: WifiP2pDevice, isConnected: Boolean, onClick: () -> Unit) {
                 val statusText = when {
                     isConnected -> "Connected • Ready to receive"
                     peer.status == WifiP2pDevice.AVAILABLE -> "Available"
-                    peer.status == WifiP2pDevice.INVITED -> "Invited"
+                    peer.status == WifiP2pDevice.INVITED -> "Connecting..."
                     peer.status == WifiP2pDevice.FAILED -> "Failed"
                     else -> "Tap to connect"
                 }
@@ -1361,7 +1391,19 @@ fun PeerItem(peer: WifiP2pDevice, isConnected: Boolean, onClick: () -> Unit) {
                             shape = androidx.compose.foundation.shape.CircleShape
                         )
                 )
+            } else if (peer.status == WifiP2pDevice.INVITED) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
             }
         }
+    }
+}
+
+@Suppress("DEPRECATION")
+fun disconnectStandardWifi(context: Context) {
+    try {
+        val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+        wifiManager.disconnect()
+    } catch (e: Exception) {
+        // Ignored
     }
 }

@@ -54,6 +54,12 @@ object FileTransferHelper {
                 // Ignore
             }
         }
+        if (result <= 0L && uri.path != null) {
+            val file = java.io.File(uri.path!!)
+            if (file.exists()) {
+                result = file.length()
+            }
+        }
         return if (result <= 0L) 0L else result // 0 means unknown length
     }
 

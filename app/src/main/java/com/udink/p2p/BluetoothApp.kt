@@ -19,6 +19,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -123,6 +125,22 @@ fun BluetoothApp(
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
+                },
+                actions = {
+                    if (!connectionStatus.startsWith("Connected")) {
+                        IconButton(onClick = { 
+                            bluetoothManager.discoverPeers { err -> Toast.makeText(context, err, Toast.LENGTH_SHORT).show() }
+                        }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Scan for devices")
+                        }
+                    } else {
+                        IconButton(onClick = { 
+                            bluetoothManager.disconnect() 
+                            Toast.makeText(context, "Disconnected", Toast.LENGTH_SHORT).show()
+                        }) {
+                            Icon(Icons.Default.Close, contentDescription = "Disconnect")
+                        }
+                    }
                 }
             )
         }
@@ -159,34 +177,7 @@ fun BluetoothApp(
 
             Text("Status: $connectionStatus", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
-            if (transferState.isActive) {
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                    shape = RoundedCornerShape(24.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp).fillMaxWidth()) {
-                        Text(
-                            text = if (transferState.isSending) "Sending ${transferState.filename}" else "Receiving ${transferState.filename}",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        LinearProgressIndicator(
-                            progress = { transferState.progress },
-                            modifier = Modifier.fillMaxWidth().height(8.dp),
-                            strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "${(transferState.progress * 100).toInt()}%",
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.align(Alignment.End),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
+
 
             if (connectionStatus.startsWith("Connected")) {
                 if (mode == "chat") {
@@ -243,13 +234,94 @@ fun BluetoothApp(
                             Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = MaterialTheme.colorScheme.onPrimary)
                         }
                     }
+                } else if (transferState.isActive) {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Spacer(modifier = Modifier.height(32.dp))
+                        Box(contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                progress = { transferState.progress },
+                                modifier = Modifier.size(160.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                strokeWidth = 8.dp,
+                                trackColor = MaterialTheme.colorScheme.primaryContainer,
+                                strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
+                            )
+                            Box(
+                                modifier = Modifier.size(100.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Text(
+                            text = if (transferState.isSending) "Sending..." else "Receiving...",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = transferState.filename,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "${(transferState.progress * 100).toInt()}%",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                        
+                        Spacer(modifier = Modifier.height(48.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Speed", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(formatSpeed(transferState.speedBytesPerSec), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("ETA", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(formatEta(transferState.etaSeconds), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                 } else {
-                    Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    var showAppDialog by remember { mutableStateOf(false) }
+                    
+                    if (showAppDialog) {
+                        AppSelectionDialog(
+                            onDismissRequest = { showAppDialog = false },
+                            onAppSelected = { appInfo ->
+                                showAppDialog = false
+                                (context as? ComponentActivity)?.lifecycleScope?.launch {
+                                    val uri = Uri.fromFile(java.io.File(appInfo.sourceDir))
+                                    bluetoothManager.sendFile(uri, overrideFilename = "${appInfo.name}.apk")
+                                }
+                            }
+                        )
+                    }
+
+                    Column(modifier = Modifier.weight(1f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                         Button(
                             onClick = { filePickerLauncher.launch("*/*") },
-                            modifier = Modifier.padding(16.dp)
+                            modifier = Modifier.padding(16.dp).fillMaxWidth(0.8f),
+                            shape = RoundedCornerShape(16.dp)
                         ) {
                             Text("Select File to Send")
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = { showAppDialog = true },
+                            modifier = Modifier.padding(16.dp).fillMaxWidth(0.8f),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                        ) {
+                            Text("Share Installed App")
                         }
                     }  
                 }
@@ -260,25 +332,40 @@ fun BluetoothApp(
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
+                
+                var connectingAddress by remember { mutableStateOf<String?>(null) }
+                
+                LaunchedEffect(connectionStatus) {
+                    if (connectionStatus.startsWith("Connected")) {
+                        connectingAddress = null
+                    }
+                }
 
                 LazyColumn(modifier = Modifier.weight(1f)) {
                     items(peers) { peer ->
+                        val isConnecting = connectingAddress == peer.address
                         @Suppress("MissingPermission")
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 6.dp),
                             onClick = { 
-                                Toast.makeText(context, "Connecting to ${peer.name ?: "Device"}", Toast.LENGTH_SHORT).show()
-                                bluetoothManager.connect(peer) { err -> Toast.makeText(context, err, Toast.LENGTH_SHORT).show() }
+                                connectingAddress = peer.address
+                                bluetoothManager.connect(peer) { err -> 
+                                    connectingAddress = null
+                                    Toast.makeText(context, err, Toast.LENGTH_SHORT).show() 
+                                }
                             }
                         ) {
                             Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                                 Spacer(modifier = Modifier.width(16.dp))
-                                Column {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(text = peer.name ?: "Unknown Device", style = MaterialTheme.typography.titleMedium)
                                     Text(text = peer.address, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                if (isConnecting) {
+                                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                                 }
                             }
                         }

@@ -65,8 +65,13 @@ class MyBluetoothManager(private val context: Context, private val transferEvent
                     _isBluetoothEnabled.value = (state == BluetoothAdapter.STATE_ON)
                 }
                 BluetoothDevice.ACTION_FOUND -> {
-                    val device: BluetoothDevice? = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
-                    if (device != null && device.name != null) {
+                    val device: BluetoothDevice? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                    }
+                    if (device != null) {
                         _peers.update { currentPeers ->
                             if (currentPeers.any { it.address == device.address }) {
                                 currentPeers
@@ -138,6 +143,16 @@ class MyBluetoothManager(private val context: Context, private val transferEvent
         serverThread = null
     }
 
+    fun disconnect() {
+        try {
+            activeSocket?.close()
+        } catch (e: Exception) {}
+        activeSocket = null
+        _connectionStatus.value = "Disconnected"
+        // Resume server listen state so we can receive again
+        startServer()
+    }
+
     @SuppressLint("MissingPermission")
     private inner class ServerThread : Thread() {
         private var mmServerSocket: BluetoothServerSocket? = null
@@ -158,7 +173,9 @@ class MyBluetoothManager(private val context: Context, private val transferEvent
                     null
                 }
                 socket?.also {
-                    listenClient(it) // Accept multiple? For simplicity, we just handle the incoming and keep loop
+                    activeSocket = it
+                    _connectionStatus.value = "Connected to peer"
+                    listenClient(it)
                 }
             }
         }
@@ -267,20 +284,26 @@ class MyBluetoothManager(private val context: Context, private val transferEvent
         }
     }
 
-    suspend fun sendFile(uri: Uri) {
+    suspend fun sendFile(uri: Uri, overrideFilename: String? = null) {
         withContext(Dispatchers.IO) {
             val socket = activeSocket ?: return@withContext
             try {
                 val dataOutputStream = DataOutputStream(socket.outputStream)
                 dataOutputStream.writeUTF("FILE")
                 
-                val filename = FileTransferHelper.getFileName(context, uri)
+                val filename = overrideFilename ?: FileTransferHelper.getFileName(context, uri)
                 dataOutputStream.writeUTF(filename)
                 
                 val totalSize = FileTransferHelper.getFileSize(context, uri)
                 dataOutputStream.writeLong(totalSize)
                 
-                val inputStream = context.contentResolver.openInputStream(uri)
+                var inputStream = context.contentResolver.openInputStream(uri)
+                if (inputStream == null && uri.path != null) {
+                    val file = java.io.File(uri.path!!)
+                    if (file.exists()) {
+                        inputStream = java.io.FileInputStream(file)
+                    }
+                }
                 
                 transferEvents.emit(TransferEvent.SendingStarted(filename))
                 
