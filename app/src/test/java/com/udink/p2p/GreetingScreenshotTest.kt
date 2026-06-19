@@ -21,7 +21,7 @@ class GreetingScreenshotTest {
 
   @Test
   fun greeting_screenshot() {
-    composeTestRule.setContent { MyApplicationTheme { HomeScreen(onNavigateToTransfer = {}, onNavigateToChat = {}, onNavigateToAbout = {}) } }
+    composeTestRule.setContent { MyApplicationTheme { HomeScreen(onNavigateToTransfer = {}, onNavigateToChat = {}, onNavigateToAbout = {}, peers = emptyList(), recentTransfers = emptyList(), isWifiDirectEnabled = true, selectedProtocol = "Wi-Fi Direct", onProtocolSelected = {}) } }
 
     composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/home_screen.png")
   }

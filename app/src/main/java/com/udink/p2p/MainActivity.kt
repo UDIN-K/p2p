@@ -149,6 +149,18 @@ class MainActivity : ComponentActivity() {
         try { wifiDirectManager.stopDiscovery() } catch (e: Exception) {}
         myBluetoothManager.unregisterReceiver()
     }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        fileTransferManager.stopServer()
+        // Ensure group is removed to cleanup wifi direct state
+        try {
+            wifiP2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() {}
+                override fun onFailure(reason: Int) {}
+            })
+        } catch (e: Exception) {}
+    }
 }
 
 @Composable
@@ -811,6 +823,9 @@ fun WiFiDirectApp(
             launch(kotlinx.coroutines.Dispatchers.IO) {
                 fileTransferManager.startServer()
             }
+        } else {
+            fileTransferManager.stopServer()
+            fileTransferManager.peerIp = null
         }
     }
 

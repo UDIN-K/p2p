@@ -8,6 +8,7 @@ import android.provider.OpenableColumns
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.DataInputStream
 import java.io.DataOutputStream
@@ -27,29 +28,43 @@ class FileTransferManager(private val context: Context) {
 
     var peerIp: String? = null
 
+    private var serverSocket: ServerSocket? = null
+    private var isServerRunning = false
+
     suspend fun startServer(port: Int = 8988) {
+        if (isServerRunning) return
         withContext(Dispatchers.IO) {
-            var serverSocket: ServerSocket? = null
             try {
                 serverSocket = ServerSocket()
-                serverSocket.reuseAddress = true
-                serverSocket.bind(InetSocketAddress(port))
+                serverSocket?.reuseAddress = true
+                serverSocket?.bind(InetSocketAddress(port))
+                isServerRunning = true
                 _transferEvents.emit(TransferEvent.ServerStarted)
                 
-                while (true) {
-                    val client = serverSocket.accept()
+                while (isServerRunning) {
+                    val client = serverSocket?.accept() ?: break
                     val clientIp = client.inetAddress.hostAddress
                     if (clientIp != null && peerIp != clientIp) {
                         peerIp = clientIp
                     }
-                    handleClient(client)
+                    launch { handleClient(client) }
                 }
             } catch (e: Exception) {
-                _transferEvents.emit(TransferEvent.Error("Server error: ${e.message}"))
+                if (isServerRunning) {
+                   _transferEvents.emit(TransferEvent.Error("Server error: ${e.message}"))
+                }
             } finally {
-                serverSocket?.close()
+                stopServer()
             }
         }
+    }
+
+    fun stopServer() {
+        isServerRunning = false
+        try {
+            serverSocket?.close()
+        } catch (e: Exception) {}
+        serverSocket = null
     }
 
     private suspend fun handleClient(client: Socket) {
