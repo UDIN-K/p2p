@@ -27,7 +27,7 @@ This project was built and is maintained by:
 To build and run this Android project from the source code, follow these steps:
   
 1. Clone or download the repository.
-2. Open the project in [Android Studio](https://developer.android.com/studio).
+2. Open the project in [Android Studio](https://developer.android.com/studio). Or Any IDE
 3. Wait for Gradle to fully sync the project dependencies.
 4. Run the app on a physical device. **Note:** An actual Android device with Wi-Fi and Bluetooth capabilities is required to fully test Wi-Fi Direct and Bluetooth connections (emulators do not fully support P2P simulation).
 
